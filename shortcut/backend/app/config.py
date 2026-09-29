@@ -42,7 +42,7 @@ def _env_path(name: str, default: str) -> Path:
 class Settings:
     """Configuração imutável do backend, validada uma única vez no boot."""
 
-    host: str = "127.0.0.1"
+    host: str = "localhost"
     port: int = 8000
     frontend_origin: str = "http://localhost:5173"
     log_level: str = "INFO"
@@ -81,7 +81,7 @@ class Settings:
             format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
         )
         settings = cls(
-            host=_env("BACKEND_HOST", "127.0.0.1"),
+            host=_env("BACKEND_HOST"),
             port=_env_int("BACKEND_PORT", 8000),
             frontend_origin=_env("FRONTEND_ORIGIN", "http://localhost:5173"),
             log_level=_env("LOG_LEVEL", "INFO").upper(),
