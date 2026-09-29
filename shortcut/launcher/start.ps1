@@ -12,12 +12,12 @@ $Launcher  = $PSScriptRoot
 $Backend   = Join-Path $Root "backend"
 $Frontend  = Join-Path $Root "frontend"
 $VenvPy    = Join-Path $Backend ".venv\Scripts\python.exe"
-$BackendUrl = "http://127.0.0.1:8000/api/health"
-$FrontendUrl = "http://127.0.0.1:5173"
+$BackendUrl = "http://localhost:8000/api/health"
+$FrontendUrl = "http://localhost:5173"
 
 Write-Host "=== Shortcut ===" -ForegroundColor Cyan
 
-# ---------------------------------------------------------------- dependÃªncias
+# ---------------------------------------------------------------- dependencias
 $sysPython = if (Get-Command python -ErrorAction SilentlyContinue) { "python" }
              elseif (Get-Command py -ErrorAction SilentlyContinue) { "py -3" }
              else { $null }
@@ -41,7 +41,7 @@ if (-not (Test-Path $VenvPy)) {
     exit 1
 }
 
-# --------------------------------------------- instÃ¢ncias antigas do projeto
+# --------------------------------------------- instâncias antigas do projeto
 Write-Host "[2/6] Encerrando instancias antigas do Shortcut (se houver)..." -ForegroundColor Yellow
 $rootPattern = [regex]::Escape($Root)
 Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |

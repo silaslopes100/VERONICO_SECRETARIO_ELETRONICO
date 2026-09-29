@@ -23,7 +23,7 @@ if str(BASE_DIR) not in sys.path:
 
 
 def _probe_host(host: str) -> str:
-    return "127.0.0.1" if host in ("0.0.0.0", "::", "") else host
+    return "localhost" if host in ("localhost", "::", "") else host
 
 
 def _listening(host: str, port: int) -> bool:
