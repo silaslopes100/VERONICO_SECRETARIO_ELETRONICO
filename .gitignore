@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+backend/.venv/
+backend/venv/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/node_modules/
+*.log
+npm-debug.log*
+
+# Secrets — nunca versionar
+.env
+.env.*
+!.env.example
+.env.enc
+*.key
+*.pem
+
+# Runtime / dados locais
+shortcut_data/
+backend/shortcut_data/
+backend/app/data/
+*.session
+user-data/
+playwright-report/
+test-results/
+
+# Editores / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+shortcut_data/*
