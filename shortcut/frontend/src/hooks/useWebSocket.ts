@@ -73,7 +73,7 @@ export function useWebSocket(onEvent: (event: WsEvent) => void): WebSocketState 
       }, retryDelay);
     };
 
-    connect();
+    queueMicrotask(connect);
 
     return () => {
       disposed = true;
