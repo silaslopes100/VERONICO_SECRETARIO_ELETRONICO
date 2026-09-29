@@ -1,3 +1,2 @@
-2026/09/29-15:12:51.753 a374 Reusing MANIFEST E:\Veronico\shortcut_data\whatsapp-profile\Default\Sync Data\LevelDB/MANIFEST-000001
-2026/09/29-15:12:51.754 a374 Recovering log #3
-2026/09/29-15:12:51.754 a374 Reusing old log E:\Veronico\shortcut_data\whatsapp-profile\Default\Sync Data\LevelDB/000003.log 
+2026/09/29-17:49:58.557 8c50 Creating DB E:\Veronico\shortcut_data\whatsapp-profile\Default\Sync Data\LevelDB since it was missing.
+2026/09/29-17:49:59.141 8c50 Reusing MANIFEST E:\Veronico\shortcut_data\whatsapp-profile\Default\Sync Data\LevelDB/MANIFEST-000001

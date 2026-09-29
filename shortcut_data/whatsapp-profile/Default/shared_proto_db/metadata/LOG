@@ -1,3 +1,2 @@
-2026/09/29-15:12:52.043 1f94 Reusing MANIFEST E:\Veronico\shortcut_data\whatsapp-profile\Default\shared_proto_db\metadata/MANIFEST-000001
-2026/09/29-15:12:52.043 1f94 Recovering log #3
-2026/09/29-15:12:52.044 1f94 Reusing old log E:\Veronico\shortcut_data\whatsapp-profile\Default\shared_proto_db\metadata/000003.log 
+2026/09/29-17:49:58.821 2d48 Creating DB E:\Veronico\shortcut_data\whatsapp-profile\Default\shared_proto_db\metadata since it was missing.
+2026/09/29-17:50:00.804 2d48 Reusing MANIFEST E:\Veronico\shortcut_data\whatsapp-profile\Default\shared_proto_db\metadata/MANIFEST-000001
