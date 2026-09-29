@@ -40,3 +40,5 @@ test-results/
 .idea/
 .DS_Store
 Thumbs.db
+
+shortcut_data/*
