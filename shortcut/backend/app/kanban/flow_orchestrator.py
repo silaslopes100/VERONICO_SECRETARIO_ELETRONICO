@@ -27,7 +27,7 @@ from app.whatsapp.message_sender import get_message_sender
 
 logger = logging.getLogger(__name__)
 
-AFFIRMATIONS = {"sim", "yes", "isso", "pode ser", "vamos la", "confirma", "claro", "simsim"}
+AFFIRMATIONS = {"sim","sim!","sim.","yes", "isso", "pode ser", "vamos la", "confirma", "claro", "simsim"}
 NEGATIONS = {"nao", "no", "para", "cancela", "cancelar", "parar", "stop"}
 NEXT_WORDS = {"proxima", "proximo", "pula", "pular", "next", "seguir", "continua"}
 REPLY_WORDS = {"responder", "responda", "reply", "resposta", "falar", "contestar"}
@@ -40,7 +40,10 @@ def normalize_command(text: str) -> str:
     stripped = "".join(
         c for c in unicodedata.normalize("NFD", lowered) if unicodedata.category(c) != "Mn"
     )
-    return " ".join(stripped.split())
+    normalized = " ".join(stripped.split())
+    logger.info("Normalized command: %s", normalized)
+    return normalized
+    
 
 
 class Command(str, Enum):
@@ -55,11 +58,14 @@ class Command(str, Enum):
 def classify_command(text: str) -> Command:
     """Mapeia a transcrição do usuário para um comando do fluxo."""
     normalized = normalize_command(text)
-    if not normalized:
+    logger.info("Classifying command from text: %s", normalized)
+    if normalized == "":
         return Command.UNKNOWN
     words = set(normalized.split())
     phrase = normalized
     if any(phrase == a or phrase.startswith(a + " ") for a in AFFIRMATIONS) or words & {"sim", "yes"}:
+        return Command.CONFIRM
+    if words & AFFIRMATIONS:
         return Command.CONFIRM
     if words & NEGATIONS:
         return Command.REJECT
@@ -77,12 +83,13 @@ class FlowOrchestrator:
 
     def __init__(self, state: StateManager | None = None) -> None:
         self.state = state or get_state_manager()
-        self.speaker = get_speaker()
+        #self.speaker = get_speaker()
         self.listener = get_voice_listener()
         self.transcriber = get_transcriber()
         self.sender = get_message_sender()
         self.archiver = get_archiver()
         self.extractor = get_audio_extractor()
+        self.speaker = get_speaker()
         self.active = False
         self.current_card_id: str | None = None
         self.last_command: str = ""
@@ -117,11 +124,18 @@ class FlowOrchestrator:
         if count == 0:
             return prompt
         try:
-            answer = await self.listener.listen_async(seconds=5)
+            answer = await asyncio.wait_for(
+                self.listener.listen_async(seconds=5), timeout=20
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Escuta do anúncio travou após 20s; seguindo sem confirmação")
+            answer = ""
         except VoiceCaptureError as exc:
             logger.warning("Mic indisponível: %s", exc)
             answer = ""
         command = classify_command(answer)
+        logger.info("Commando classificado: %s", command)
+        logger.info("Resposta do usuário: %s", answer)
         self.last_command = answer
         if command is Command.CONFIRM:
             await self.start()
@@ -131,6 +145,7 @@ class FlowOrchestrator:
     async def start(self) -> None:
         """Inicia (ou retoma) a esteira de leitura sequencial."""
         if self.active:
+            logger.info("Esteira já ativa; start ignorado")
             return
         self.active = True
         self._publish_status()
@@ -157,6 +172,8 @@ class FlowOrchestrator:
                 await self._process_card(card)
         except asyncio.CancelledError:
             logger.debug("Fluxo cancelado.")
+        except Exception:
+            logger.exception("Erro na esteira de leitura")
         finally:
             self.active = False
             self.current_card_id = None
@@ -176,7 +193,9 @@ class FlowOrchestrator:
         logger.info("Processando card %s (%s)", card.id, card.contact)
 
         transcript = await self._ensure_transcript(card)
-        await self.speaker.speak_async(f"Mensagem de {card.contact}. {transcript}")
+        speech = f"Mensagem de {card.contact}. {transcript}"
+        logger.info("Falando card %s: %.80r", card.id, speech)
+        await self.speaker.speak_async(speech)
 
         if card.column is ColumnId.NEW:
             await self.state.move_card(card.id, ColumnId.HEARD)
@@ -193,7 +212,9 @@ class FlowOrchestrator:
             try:
                 path = await self.extractor.download_latest(card.contact)
                 if path:
-                    text = self.transcriber.transcribe_safe(path, language="pt")
+                    text = await asyncio.to_thread(
+                        self.transcriber.transcribe_safe, path, language="pt"
+                    )
                     if text:
                         await self.state.set_transcript(card.id, text)
                         return text
@@ -202,8 +223,17 @@ class FlowOrchestrator:
         return card.speech_text
 
     async def _listen_command(self, timeout: float = 5.0) -> Command:
+        logger.info("Escutando comando por %.0fs…", timeout)
         try:
-            answer = await self.listener.listen_async(seconds=timeout)
+            answer = await asyncio.wait_for(
+                self.listener.listen_async(seconds=timeout),
+                timeout=timeout + 15,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Escuta travou após %.0fs; seguindo sem comando", timeout + 15
+            )
+            answer = ""
         except VoiceCaptureError as exc:
             logger.warning("Não foi possível ouvir o usuário: %s", exc)
             return Command.NEXT  # esteira segue sem comando
@@ -233,7 +263,12 @@ class FlowOrchestrator:
     async def _reply(self, card: Card) -> None:
         await self.speaker.speak_async("Pode falar a sua resposta.")
         try:
-            answer = await self.listener.listen_async(seconds=10)
+            answer = await asyncio.wait_for(
+                self.listener.listen_async(seconds=10), timeout=25
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Escuta da resposta travou após 25s")
+            answer = ""
         except VoiceCaptureError as exc:
             logger.warning("Falha ao capturar resposta: %s", exc)
             await self.speaker.speak_async("Não consegui ouvir. Vamos para a próxima.")

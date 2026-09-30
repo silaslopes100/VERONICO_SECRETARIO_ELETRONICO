@@ -249,7 +249,9 @@ class InboxReader:
             path = await get_audio_extractor().download_latest(card.contact)
             if not path:
                 return
-            text = get_transcriber().transcribe_safe(path, language="pt")
+            text = await asyncio.to_thread(
+                get_transcriber().transcribe_safe, path, language="pt"
+            )
             if text:
                 await get_state_manager().set_transcript(card.id, text)
                 logger.info("Áudio de %s transcrito.", card.contact)

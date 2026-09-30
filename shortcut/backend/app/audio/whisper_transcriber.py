@@ -71,7 +71,7 @@ class WhisperTranscriber:
     def _transcribe_path(self, path: Path, language: str | None) -> str:
         model = self._load_model()
         if self._backend == "faster-whisper":
-            segments, _info = model.transcribe(str(path), language=language, vad_filter=True)
+            segments, _info = model.transcribe(str(path), language=language)
             return " ".join(seg.text for seg in segments)
         result = model.transcribe(str(path), language=language)
         return str(result.get("text", ""))

@@ -1,6 +1,7 @@
 """Endpoints de comando de voz, leitura sequencial e transcrição de áudio."""
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, HTTPException, UploadFile
@@ -58,7 +59,7 @@ async def transcribe(file: UploadFile) -> dict:
     if not data:
         raise HTTPException(status_code=422, detail="Arquivo vazio")
     try:
-        text = get_transcriber().transcribe(data, language="pt")
+        text = await asyncio.to_thread(get_transcriber().transcribe, data, language="pt")
     except Exception as exc:  # noqa: BLE001
         logger.error("Transcrição falhou: %s", exc)
         raise HTTPException(status_code=500, detail="Falha na transcrição") from exc

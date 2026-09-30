@@ -58,11 +58,11 @@ class AudioExtractor:
         sounds: list[bytes] = []
         done = {"flag": False}
 
-        def on_response(response) -> None:  # noqa: ANN001 - tipo do Playwright
+        async def on_response(response) -> None:  # noqa: ANN001 - tipo do Playwright
             try:
                 ctype = (response.headers or {}).get("content-type", "").lower()
                 if any(t in ctype for t in _AUDIO_TYPES) and "json" not in ctype:
-                    body = response.body()
+                    body = await response.body()  # body() é assíncrono no Playwright
                     if body and len(body) > 512:
                         sounds.append(body)
             except Exception:  # noqa: BLE001 - respostas descartadas são comuns

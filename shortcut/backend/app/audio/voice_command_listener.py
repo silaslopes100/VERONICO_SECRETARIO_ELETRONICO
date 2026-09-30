@@ -9,11 +9,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import tempfile
+import threading
 import wave
 from pathlib import Path
-
+import numpy as np
+import sounddevice as sd
 from app.audio.whisper_transcriber import get_transcriber
 from app.config import get_settings
+
 
 logger = logging.getLogger(__name__)
 
@@ -33,19 +36,36 @@ def save_wav(path: Path, frames, sample_rate: int, channels: int) -> Path:
 
 
 def record_seconds(seconds: float, sample_rate: int, channels: int):
-    """Bloqueia por ``seconds`` gravando o microfone; devolve array int16."""
-    import numpy as np
-    import sounddevice as sd
+    """Bloqueia por ``seconds`` gravando o microfone; devolve array int16.
 
+    Usa callback + ``Event.wait`` com timeout duro (``seconds + 5``): se o
+    dispositivo não entregar áudio, a gravação termina mesmo assim e o
+    stream é liberado — ``sd.wait()`` podia pendurar para sempre.
+    """
     logger.debug("Gravando %.1fs de áudio…", seconds)
-    recording = sd.rec(
-        int(seconds * sample_rate),
-        samplerate=sample_rate,
-        channels=channels,
-        dtype="int16",
-    )
-    sd.wait()
-    return np.asarray(recording).reshape(-1) if channels == 1 else recording
+    target = int(seconds * sample_rate)
+    chunks: list[np.ndarray] = []
+    got = {"n": 0}
+    done = threading.Event()
+
+    def callback(indata, _frames, _time, _status):  # noqa: ANN001 - assinatura do sounddevice
+        if got["n"] >= target:
+            done.set()
+            return
+        chunks.append(indata.copy())
+        got["n"] += indata.shape[0]
+        if got["n"] >= target:
+            done.set()
+
+    with sd.InputStream(
+        samplerate=sample_rate, channels=channels, dtype="int16", callback=callback
+    ):
+        done.wait(timeout=seconds + 5)
+
+    if not chunks:
+        raise RuntimeError("microfone não entregou áudio dentro do tempo")
+    recording = np.concatenate(chunks, axis=0)[:target]
+    return recording.reshape(-1) if channels == 1 else recording
 
 
 class VoiceCommandListener:
