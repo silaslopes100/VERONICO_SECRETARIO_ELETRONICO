@@ -125,6 +125,76 @@ class StateManager:
             logger.info("Card criado: %s (%s)", card.contact, card.id)
             return card
 
+    async def update_conversation(self, conversation: Conversation) -> Card | None:
+        """Atualiza card existente; reabre em "Nova mensagem" se chegou mensagem.
+
+        Casa primeiro por ``chat_id`` e, na falta, por nome do contato (migração
+        de ids antigos sem índice). Retorna ``None`` quando não há card — o
+        chamador deve então criar um. Idempotente: sem mudança real não publica.
+
+        Só há reabertura quando a mudança indica mensagem **recebida** (preview
+        novo ou badge incrementado) — migração de id, hora "hoje/ontem" ou
+        resposta própria ("Você: …") apenas republicam o card no lugar.
+        """
+        async with self._lock:
+            existing = next(
+                (c for c in self.cards.values() if c.chat_id == conversation.chat_id and not c.archived),
+                None,
+            )
+            if existing is None:
+                existing = next(
+                    (c for c in self.cards.values() if c.contact == conversation.name and not c.archived),
+                    None,
+                )
+            if existing is None:
+                return None
+
+            preview = conversation.preview
+            is_self = preview.lower().startswith(("você:", "voce:", "you:"))
+            republish = False
+            message_received = False
+
+            if existing.chat_id != conversation.chat_id:
+                logger.info(
+                    "Card %s adotou chat_id %s (migração de id antigo)",
+                    existing.id,
+                    conversation.chat_id,
+                )
+                existing.chat_id = conversation.chat_id
+                republish = True
+            if preview and preview != existing.preview:
+                existing.preview = preview
+                existing.is_audio = conversation.is_audio
+                if not is_self:
+                    existing.transcript = ""  # mensagem nova invalida transcrição antiga
+                    message_received = True
+                republish = True
+            if conversation.timestamp and conversation.timestamp != existing.timestamp:
+                existing.timestamp = conversation.timestamp
+                republish = True
+            if conversation.unread_count and conversation.unread_count != existing.unread_count:
+                existing.unread_count = conversation.unread_count
+                republish = True
+                if not is_self:
+                    message_received = True
+
+            if not republish:
+                return existing
+
+            if message_received and existing.column is not ColumnId.NEW:
+                self.columns[existing.column].card_ids.remove(existing.id)
+                existing.column = ColumnId.NEW
+                self.columns[ColumnId.NEW].card_ids.append(existing.id)
+                logger.info(
+                    "Card %s reaberto em Nova mensagem (%s)",
+                    existing.id,
+                    existing.contact,
+                )
+            existing.updated_at = time.time()
+            self._save()
+            self._broadcast()
+            return existing
+
     async def move_card(self, card_id: str, target: ColumnId) -> Card:
         """Move o card validando a transição; publica o novo estado."""
         async with self._lock:

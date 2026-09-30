@@ -22,22 +22,44 @@ export function useKanbanState() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const knownCardsRef = useRef<Set<string>>(new Set());
+  const knownColumnsRef = useRef<Map<string, ColumnId>>(new Map());
   const [freshCardIds, setFreshCardIds] = useState<string[]>([]);
 
-  const handleEvent = useCallback((event: { type: string; payload: unknown }) => {
-    if (event.type === "kanban_state") {
-      const next = event.payload as KanbanState;
-      const known = knownCardsRef.current;
-      const fresh = Object.keys(next.cards).filter((id) => !known.has(id));
-      Object.keys(next.cards).forEach((id) => known.add(id));
-      setState(next);
-      if (fresh.length > 0) setFreshCardIds((prev) => [...prev, ...fresh]);
-    } else if (event.type === "whatsapp_status") {
-      setWhatsapp(event.payload as WhatsAppStatus);
-    } else if (event.type === "flow_status") {
-      setFlow(event.payload as FlowStatus);
-    }
+  const applyState = useCallback((next: KanbanState) => {
+    setState((prev) => (next.updatedAt >= prev.updatedAt ? next : prev));
   }, []);
+
+  const trackCards = useCallback((cards: Record<string, Card>) => {
+    Object.entries(cards).forEach(([id, card]) => {
+      knownCardsRef.current.add(id);
+      knownColumnsRef.current.set(id, card.column);
+    });
+  }, []);
+
+  const handleEvent = useCallback(
+    (event: { type: string; payload: unknown }) => {
+      if (event.type === "kanban_state") {
+        const next = event.payload as KanbanState;
+        const fresh: string[] = [];
+        Object.entries(next.cards).forEach(([id, card]) => {
+          const previousColumn = knownColumnsRef.current.get(id);
+          const isNewCard = !knownCardsRef.current.has(id);
+          const reopened =
+            previousColumn !== undefined && previousColumn !== card.column && card.column === "new";
+          if (isNewCard || reopened) fresh.push(id);
+          knownCardsRef.current.add(id);
+          knownColumnsRef.current.set(id, card.column);
+        });
+        applyState(next);
+        if (fresh.length > 0) setFreshCardIds((prev) => [...prev, ...fresh]);
+      } else if (event.type === "whatsapp_status") {
+        setWhatsapp(event.payload as WhatsAppStatus);
+      } else if (event.type === "flow_status") {
+        setFlow(event.payload as FlowStatus);
+      }
+    },
+    [applyState],
+  );
 
   const { connected } = useWebSocket(handleEvent);
 
@@ -47,19 +69,36 @@ export function useKanbanState() {
       const [status, kanban] = await Promise.all([api.getStatus(), api.getState()]);
       setWhatsapp(status.whatsapp);
       setFlow(status.flow);
-      setState(kanban);
-      Object.keys(kanban.cards).forEach((id) => knownCardsRef.current.add(id));
+      applyState(kanban);
+      trackCards(kanban.cards);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Backend indisponível");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [applyState, trackCards]);
 
   useEffect(() => {
     void loadInitial();
   }, [loadInitial, connected]);
+
+  // Fallback: se o WS morrer, um GET periódico mantém a UI viva (nunca congela até F5).
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      api
+        .getState()
+        .then((kanban) => {
+          applyState(kanban);
+          trackCards(kanban.cards);
+        })
+        .catch(() => {
+          /* backend indisponível — erro já aparece via loadInitial/WS */
+        });
+    }, 10000);
+    return () => window.clearInterval(timer);
+  }, [applyState, trackCards]);
 
   const moveCard = useCallback(async (cardId: string, column: ColumnId) => {
     try {

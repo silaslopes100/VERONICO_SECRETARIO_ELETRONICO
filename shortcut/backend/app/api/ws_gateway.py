@@ -34,7 +34,8 @@ class WSConnectionManager:
     async def send(self, websocket: WebSocket, event: dict[str, Any]) -> None:
         try:
             await websocket.send_json(event)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Falha ao enviar evento WS (%s): %s", event.get("type"), exc)
             await self.disconnect(websocket)
 
     async def broadcast(self, event: dict[str, Any]) -> None:
@@ -56,8 +57,9 @@ def publish(event: dict[str, Any]) -> None:
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
+        logger.debug("Evento %s descartado: sem event loop ativo", event.get("type"))
         return  # sem event loop ativo (ex.: inicialização síncrona)
-    asyncio.ensure_future(manager.broadcast(event))
+    loop.create_task(manager.broadcast(event))
 
 
 async def ws_endpoint(websocket: WebSocket) -> None:

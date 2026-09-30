@@ -55,20 +55,27 @@ Nova mensagem ──▶ Ouvidas ──▶ Aguardando resposta ──▶ Respondi
 As transições válidas estão em `kanban/state_manager.py → ALLOWED_TRANSITIONS`;
 qualquer outra combinação retorna **409 Conflict** na API.
 
-### 3.2 Chegada de mensagens (pull)
+### 3.2 Chegada de mensagens (push + pull)
 
 ```
-polling loop (inbox_reader)
+MutationObserver (#pane-side) → binding "shortcutSidebarChanged"
+   └─ schedule_sidebar_refresh() → poll imediato (~0,7 s)
+polling loop (inbox_reader, fallback a cada POLL_INTERVAL_SECONDS)
    └─ read_unread()  → EXTRACT_JS varre a sidebar → parse_rows() sanitiza
-        └─ state_manager.add_conversation()  → card novo na coluna "Nova mensagem"
-             └─ se is_audio: audio_extractor.download_latest()
+        ├─ state_manager.add_conversation()      → card novo em "Nova mensagem"
+        └─ state_manager.update_conversation()   → card existente atualizado;
+             (preview/badge mudaram → reabre em "Nova mensagem")
+             └─ se is_audio sem transcrição: audio_extractor.download_latest()
                               → whisper_transcriber.transcribe()
                               → state_manager.set_transcript()
         └─ publica evento "kanban_state" (WebSocket) → UI atualiza + toca som MSN
 ```
 
-Deduplicação: `chat_id`s já presentes em cards ativos são ignorados no polling
-(`active_chat_ids`), então um card só reentra se a conversa for arquivada/removida.
+Identidade do chat: `data-id` (JID) da linha da sidebar → estável entre
+reordenações; fallback para o slug do nome. Cards antigos (slug + índice) são
+adotados pelo nome no primeiro poll (migração automática). Conversas lidas só
+entram se o lote trouxer ao menos um badge de não-lida (válvula: se nenhum
+badge for detectado, nada é filtrado).
 
 ### 3.3 Interações do card
 
@@ -131,11 +138,12 @@ apenas eventos de mudança:
 
 | Evento | Origem |
 | --- | --- |
-| `kanban_state` | `state_manager` (toda mutação: criar/mover/transcrever/arquivar) |
+| `kanban_state` | `state_manager` (toda mutação: criar/atualizar/reabrir/mover/transcrever/arquivar) |
 | `whatsapp_status` | `browser_manager` (starting / waiting_qr / connected / error) |
 | `flow_status` | `flow_orchestrator` (esteira ativa, card atual) |
 
-O frontend (`useWebSocket`) reconecta automaticamente a cada 3 s.
+O frontend (`useWebSocket`) reconecta em backoff de 1 s → 10 s e, como
+fallback, faz `GET /api/state` a cada 10 s — a UI nunca fica congelada sem F5.
 
 ---
 

@@ -38,6 +38,7 @@ class BrowserManager:
         self._lock = asyncio.Lock()
         self._task: asyncio.Task | None = None
         self._last_error: str | None = None
+        self._binding_installed = False
 
     # ------------------------------------------------------------------ status
     @property
@@ -84,6 +85,7 @@ class BrowserManager:
                 viewport={"width": 1280, "height": 900},
                 args=["--disable-blink-features=AutomationControlled"],
             )
+            await self._install_sidebar_binding()
             pages = self._context.pages
             self._page = pages[0] if pages else await self._context.new_page()
             await self._page.goto(self.settings.whatsapp_url, wait_until="domcontentloaded")
@@ -94,6 +96,27 @@ class BrowserManager:
         except Exception as exc:  # noqa: BLE001
             logger.exception("Falha ao iniciar o navegador do WhatsApp")
             self._set_status(WhatsAppStatus.ERROR, str(exc))
+
+    async def _install_sidebar_binding(self) -> None:
+        """Expõe ``window.shortcutSidebarChanged`` no contexto da página.
+
+        O MutationObserver instalado no inbox_reader chama esse binding quando
+        a sidebar muda, disparando um poll imediato (tempo real de verdade).
+        """
+        from app.whatsapp.inbox_reader import schedule_sidebar_refresh  # import tardio
+
+        if self._binding_installed:
+            return
+        try:
+            assert self._context is not None
+            await self._context.expose_binding(
+                "shortcutSidebarChanged",
+                lambda _source: schedule_sidebar_refresh(),
+            )
+            self._binding_installed = True
+            logger.info("Binding do observer da sidebar instalado.")
+        except Exception as exc:  # noqa: BLE001 - polling periódico é o fallback
+            logger.warning("Falha ao instalar binding da sidebar: %s", exc)
 
     async def _watch_login(self) -> None:
         """Aguarda a tela principal do WhatsApp (QR escaneado ou sessão salva)."""
@@ -130,6 +153,7 @@ class BrowserManager:
         self._context = None
         self._playwright = None
         self._page = None
+        self._binding_installed = False
         self._set_status(WhatsAppStatus.STOPPED)
 
     # ------------------------------------------------------------------ access
